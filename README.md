@@ -51,6 +51,7 @@ python scripts/agentic_orchestrator.py --cluster anvil --max-rounds 6
 | `config/` | Cluster, evaluation-criteria and experiment configs |
 | `templates/` | SLURM `.sbatch` templates for VASP, NEP training and deposition runs |
 | `docs/` | AlN/Si potential-development plan |
+| `rounds/` | Scripts actually run on Anvil for training rounds 0, 1 and 1.5 (see `rounds/README.md`) |
 | `references/` | HPC notes for Anvil vs ACES |
 
-Outputs go to `runs/`, `deposition/` and `seeds/`, which are git-ignored.
+Outputs go to `runs/`, `deposition/`, `seeds/` and `rounds/round*_out/`, which are git-ignored.

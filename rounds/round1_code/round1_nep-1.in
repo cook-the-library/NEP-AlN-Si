@@ -1,0 +1,29 @@
+fine_tune round0_nep.txt round0_nep.restart
+
+# --- architecture: MUST match round0_nep-1.in exactly, since fine_tune ----
+# --- continues training round0_nep.txt's weights; changing type/cutoff/  ---
+# --- n_max/basis_size/l_max/neuron here would be a different model, not  ---
+# --- a continuation of it. Copied verbatim from round0_nep-1.in.         ---
+type          3 N Al Si # this is a mandatory keyword
+version       4       # default
+cutoff        6 4     # default
+zbl           2
+n_max         12 8     # default
+basis_size    12 12     # default
+l_max         4 2 0   # default
+neuron        60      # default
+
+# --- loss weights: carried over unchanged from round0_nep-1.in. Revisit  ---
+# --- if round0's converged model over/under-weighted energy vs. forces.  ---
+lambda_e      0.1     # default
+lambda_f      50     # default
+lambda_v      0.1     # default
+batch         1000    # default
+population    50      # default
+
+# --- generation: left at round0's value for a safe default, but 200000  ---
+# --- generations is a from-scratch budget. Fine-tuning from a converged  ---
+# --- potential typically needs far fewer -- watch round1_loss-1.out and  ---
+# --- feel free to cut this down (e.g. 20000-50000) once you've seen how  ---
+# --- fast the loss plateaus, to save GPU allocation.                     ---
+generation    200000  # default

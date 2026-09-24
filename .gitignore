@@ -4,3 +4,6 @@ __pycache__/
 runs/
 deposition/
 seeds/
+# Production-round outputs and POTCARs (VASP licence) -- see rounds/README.md
+rounds/round*_out/
+rounds/aaa-potential/

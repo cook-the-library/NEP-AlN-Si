@@ -1,0 +1,30 @@
+# Continuation of our own model happens through nep.restart, which
+# round1.5_nep.sbatch copies in from round1_out/dataset. GPUMD's fine_tune
+# keyword is only for the 89-element foundation model, so it is not used.
+#
+# --- architecture: MUST match round1_nep-1.in exactly, or round 1's -------
+# --- nep.restart cannot be continued (the parameter vector would be a  ----
+# --- different length). Copied verbatim from round1_nep-1.in.          ----
+type          3 N Al Si # this is a mandatory keyword
+version       4       # default
+cutoff        6 4     # default
+zbl           2
+n_max         12 8     # default
+basis_size    12 12     # default
+l_max         4 2 0   # default
+neuron        60      # default
+
+# --- loss weights: carried over unchanged from round1_nep-1.in. Note that ---
+# --- lambda_f 50 against lambda_e 0.1 makes forces ~500x more important   ---
+# --- than energies; round 0's energy RMSE never came down as a result.    ---
+lambda_e      0.1     # default
+lambda_f      50     # default
+lambda_v      0.1     # default
+batch         1000    # default
+population    50      # default
+
+# --- generation: continuing from round 1's restart needs far fewer than  ---
+# --- a from-scratch run. Watch round1.5_out/round1.5_loss-1.out: round 0 ---
+# --- reached its best test force RMSE around generation 20000 and got    ---
+# --- worse after that, so consider cutting this down.                    ---
+generation    200000  # default
