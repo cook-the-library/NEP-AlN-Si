@@ -1,5 +1,11 @@
 # NEP-AlN-Si
 
+> **This repository is a worked example of
+> [Agentic-AI-devleloping-NEP-for-Deposition](https://github.com/cook-the-library/Agentic-AI-devleloping-NEP-for-Deposition)**:
+> the general agentic NEP-for-deposition workflow applied to one real material
+> system, AlN on Si(111). Use that repository for the generic workflow, and this
+> one to see how it is adapted to a specific system and what running it produces.
+
 Agentic, closed-loop development of a GPUMD NEP (neuroevolution potential) for
 **AlN deposited on Si(111)**, and use of that potential to optimize deposition
 conditions on Purdue Anvil or TAMU ACES.
@@ -10,10 +16,7 @@ conductance (TBC), and goes back for more training data until those pass. The tr
 NEP then drives LAMMPS co-deposition of Al and N onto Si(111) across a sweep of
 substrate temperature, incident energy, angle and V/III ratio.
 
-Built from the general
-[`Agentic-AI-devleloping-NEP-for-Deposition`](https://github.com/cook-the-library/Agentic-AI-devleloping-NEP-for-Deposition)
-workflow and adapted to this material system. The reasoning behind the training
-set and the validation steps is in
+The reasoning behind the training set and the validation steps is in
 [`docs/AlN_Si_development_plan.md`](docs/AlN_Si_development_plan.md). Stage-by-stage
 docs are in [`SKILL.md`](SKILL.md).
 
@@ -27,7 +30,7 @@ python scripts/aln_si_structures.py          # optional: inspect seed structures
 python scripts/agentic_orchestrator.py --cluster anvil --max-rounds 6
 ```
 
-## What's specific to AlN on Si
+## What this example changes from the general workflow
 
 - **Seeds** (`scripts/aln_si_structures.py`):
   - bulk wurtzite, zincblende and rocksalt AlN; bulk Si and Al
