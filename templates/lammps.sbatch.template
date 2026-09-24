@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --job-name={{job_name}}
+#SBATCH --account={{account}}
+#SBATCH --partition={{partition}}
+#SBATCH --gres=gpu:1
+#SBATCH --time={{walltime}}
+#SBATCH --output={{workdir}}/slurm-%j.out
+#SBATCH --error={{workdir}}/slurm-%j.err
+{% if qos %}#SBATCH --qos={{qos}}{% endif %}
+
+set -euo pipefail
+cd "{{workdir}}"
+
+{% for line in modules %}{{line}}
+{% endfor %}
+
+# in.deposit and nep.txt (trained potential, loaded via pair_style nep) are
+# expected to already be staged in {{workdir}} by submit_deposition_optimization.py.
+{{lammps_exe}} -in in.deposit -log lammps.log > lammps.out 2>&1
+echo "DEPOSITION_RUN_DONE" >> lammps.out

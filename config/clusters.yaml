@@ -1,0 +1,72 @@
+# Fill in every FILL_ME_IN before running anything for real.
+# Both Anvil and ACES are SLURM clusters, but accounts/partitions/modules differ
+# and only you have the allocation details. Verify with `sinfo`, `module avail`,
+# and your allocation dashboard before first submission (see references/hpc_notes.md).
+
+anvil:
+  # Purdue Anvil (ACCESS allocation), scheduler: SLURM
+  scheduler: slurm
+  account: FILL_ME_IN            # e.g. your ACCESS project code, run `myaccount` on Anvil to confirm
+  partition_cpu: FILL_ME_IN      # e.g. "shared" or "wholenode" -- check `sinfo` for current names
+  partition_gpu: FILL_ME_IN      # e.g. "gpu"
+  qos: null                      # set if your allocation requires a QOS flag
+  walltime_vasp: "04:00:00"
+  walltime_nep: "24:00:00"
+  walltime_deposition: "08:00:00"
+  nodes_vasp: 1
+  ntasks_vasp: 128                # Anvil CPU nodes are 128 cores/node -- confirm for your queue
+  modules:
+    vasp:
+      - "module load vasp/6.4.2"   # confirm exact module name/version with `module avail vasp`
+    nep:
+      - "module load gcc/11.2.0"
+      - "module load cuda/11.7.0"
+      - "module load gpumd"        # GPUMD/NEP is often self-built; adjust to your install
+    lammps:
+      - "module load gcc/11.2.0"
+      - "module load cuda/11.7.0"
+      - "module load lammps"       # must be a LAMMPS build with the NEP pair_style (pair_style nep) --
+                                     # stock LAMMPS modules usually do NOT include it; see references/hpc_notes.md
+  executables:
+    vasp_std: "vasp_std"           # or full path if not on PATH after module load
+    nep: "nep"                     # GPUMD's nep training binary
+    gpumd: "gpumd"                 # GPUMD's MD binary (used for kappa/TBC evaluation runs)
+    lammps: "lmp"                  # LAMMPS binary with pair_style nep, used for deposition simulation
+  scratch_dir: "FILL_ME_IN"        # e.g. /anvil/scratch/x-yourusername
+
+aces:
+  # Texas A&M ACES (part of TAMU HPRC), scheduler: SLURM
+  scheduler: slurm
+  account: FILL_ME_IN             # your HPRC allocation/project name
+  partition_cpu: FILL_ME_IN       # check `sinfo` -- ACES partitions differ from Anvil's
+  partition_gpu: FILL_ME_IN
+  qos: null
+  walltime_vasp: "04:00:00"
+  walltime_nep: "24:00:00"
+  walltime_deposition: "08:00:00"
+  nodes_vasp: 1
+  ntasks_vasp: 96                  # confirm cores/node for the ACES CPU partition you're using
+  modules:
+    vasp:
+      - "module load intel/2022a"  # ACES uses the TAMU HPRC module toolchain -- confirm with `module spider vasp`
+      - "module load VASP/6.4.2"
+    nep:
+      - "module load GCC/11.3.0"
+      - "module load CUDA/11.7.0"
+      - "module load GPUMD"        # confirm exact module name with `module spider gpumd`, or use your own build
+    lammps:
+      - "module load GCC/11.3.0"
+      - "module load CUDA/11.7.0"
+      - "module load LAMMPS"       # must include the NEP pair_style -- likely a self-build, see references/hpc_notes.md
+  executables:
+    vasp_std: "vasp_std"
+    nep: "nep"
+    gpumd: "gpumd"
+    lammps: "lmp"
+  scratch_dir: "FILL_ME_IN"        # e.g. /scratch/user/yourusername
+
+# Applies to whichever cluster is selected at the CLI with --cluster
+common:
+  conda_env: "FILL_ME_IN"          # environment with ase/pymatgen/numpy for the Python pre/post steps, if used on-cluster
+  poll_interval_seconds: 60        # how often agentic_orchestrator.py polls `squeue` for job completion
+  max_poll_hours: 48               # give up waiting (and flag for the human) past this

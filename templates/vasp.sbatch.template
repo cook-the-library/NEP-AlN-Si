@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --job-name={{job_name}}
+#SBATCH --account={{account}}
+#SBATCH --partition={{partition}}
+#SBATCH --nodes={{nodes}}
+#SBATCH --ntasks={{ntasks}}
+#SBATCH --time={{walltime}}
+#SBATCH --output={{workdir}}/slurm-%j.out
+#SBATCH --error={{workdir}}/slurm-%j.err
+{% if qos %}#SBATCH --qos={{qos}}{% endif %}
+
+set -euo pipefail
+cd "{{workdir}}"
+
+{% for line in modules %}{{line}}
+{% endfor %}
+
+# INCAR/POSCAR/POTCAR/KPOINTS are expected to already be staged in {{workdir}}
+# by submit_vasp.py before this script is submitted.
+srun --ntasks={{ntasks}} {{vasp_exe}} > vasp.out 2> vasp.err
+echo "VASP_DONE" >> vasp.out

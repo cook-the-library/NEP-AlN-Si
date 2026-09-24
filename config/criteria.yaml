@@ -1,0 +1,43 @@
+# Thresholds that decide "sufficient potential?" at stage 5, and the deposition
+# sweep explored at stages 7/8, set for AlN on Si(111).
+# Starting points only -- tighten them once the first rounds show what's reachable.
+
+evaluation:
+  energy_rmse_meV_per_atom_max: 2.0   # 3-element system with surfaces and interfaces
+  force_rmse_meV_per_A_max: 100.0
+  virial_rmse_meV_per_atom_max: 5.0
+
+  kappa:
+    enabled: true
+    method: "hnemd"
+    # Bulk wurtzite AlN at 300 K. Single crystals measure roughly 285-340 W/mK
+    # depending on oxygen content; fill in the value you trust, or compare to Si
+    # (~148 W/mK at 300 K) as a second check.
+    target_W_per_mK: null
+    relative_tolerance: 0.20
+
+  tbc:
+    enabled: true
+    method: "nemd"
+    target_MW_per_m2K: null           # fill in from TDTR on your own films; reported AlN/Si values vary widely
+    relative_tolerance: 0.25
+
+  require_all_criteria: true
+
+active_learning:
+  structures_per_round: 60            # more than the default: bulk + surface + interface + adatoms
+  bias_toward_high_error: true
+  max_rounds: 6
+
+deposition_sweep:
+  # Every combination becomes one LAMMPS job (3*3*2*1*3 = 54 here); keep the grid small.
+  # Substrate temperature: sputtering runs cooler, MOCVD hotter (~1300-1400 K);
+  # MD time scales mean these act as effective, not literal, temperatures.
+  temperature_K: [600, 900, 1200]
+  incident_energy_eV: [1, 5, 20]            # near-thermal (MOCVD/MBE) through sputtered atoms
+  incident_angle_deg: [0, 30]
+  flux_atoms_per_ps: [1.0]                  # total Al + N arrival rate
+  n_to_al_ratio: [1.0, 1.5, 3.0]            # V/III ratio of incoming atoms
+  optimization_method: "grid"               # "bayesian" still submits the full grid (see submit_deposition_optimization.py)
+  bayesian_n_calls: 30
+  target_property: "tbc"

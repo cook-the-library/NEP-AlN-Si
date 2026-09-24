@@ -1,0 +1,9 @@
+# Install on whichever machine runs these scripts (typically the HPC login
+# node, or a local machine that then submits via a configured SLURM client).
+pyyaml>=6.0
+ase>=3.22
+jinja2>=3.0        # optional -- a minimal fallback templater is used if absent
+numpy>=1.23
+# Optional, only needed if config/criteria.yaml sets
+# deposition_sweep.optimization_method: bayesian
+scikit-optimize>=0.9

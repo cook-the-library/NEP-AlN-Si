@@ -1,0 +1,19 @@
+# The real AlN-on-Si deposition that stage 6 (identify_deposition_setup.py)
+# correlates the simulation against. Leave nulls until you have measured values.
+
+experiment:
+  name: "AlN-on-Si111"
+  deposition_technique: "FILL_ME_IN"  # e.g. "reactive sputtering", "MOCVD", "PA-MBE"
+  substrate_material: "Si"
+  deposit_material: "AlN"
+  substrate_orientation: "(111)"      # (111) gives the hexagonal template for c-plane AlN
+  growth_polarity: "Al"               # "Al" or "N"; sets the slab/interface seeds in generate_structures.py
+  interface_termination: "Al"         # "Al" if an Al pre-deposition layer is used, "N" if Si is nitrided
+  substrate_temperature_K: null
+  chamber_pressure_Pa: null
+  n2_or_nh3_flow_sccm: null
+  measured_target_property: "tbc"     # "tbc" (AlN/Si interface) or "kappa" (AlN film)
+  measured_value: null                # e.g. TDTR/FDTR result for this growth run
+  measured_value_uncertainty: null
+  film_thickness_nm: null             # needed to separate film kappa from interface TBC in TDTR fits
+  notes: ""

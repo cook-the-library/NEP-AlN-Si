@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --job-name={{job_name}}
+#SBATCH --account={{account}}
+#SBATCH --partition={{partition}}
+#SBATCH --gres=gpu:1
+#SBATCH --time={{walltime}}
+#SBATCH --output={{workdir}}/slurm-%j.out
+#SBATCH --error={{workdir}}/slurm-%j.err
+{% if qos %}#SBATCH --qos={{qos}}{% endif %}
+
+set -euo pipefail
+cd "{{workdir}}"
+
+{% for line in modules %}{{line}}
+{% endfor %}
+
+# train.xyz, test.xyz, and nep.in are expected to already be staged in {{workdir}}
+# by submit_nep_training.py before this script is submitted.
+{{nep_exe}} > nep_run.log 2>&1
+echo "NEP_TRAIN_DONE" >> nep_run.log

@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --job-name={{job_name}}
+#SBATCH --account={{account}}
+#SBATCH --partition={{partition}}
+#SBATCH --gres=gpu:1
+#SBATCH --time={{walltime}}
+#SBATCH --output={{workdir}}/slurm-%j.out
+#SBATCH --error={{workdir}}/slurm-%j.err
+{% if qos %}#SBATCH --qos={{qos}}{% endif %}
+
+set -euo pipefail
+cd "{{workdir}}"
+
+{% for line in modules %}{{line}}
+{% endfor %}
+
+# run.in, model.xyz, and nep.txt (trained potential) are expected to already be
+# staged in {{workdir}} by submit_deposition_optimization.py.
+{{gpumd_exe}} > gpumd_run.log 2>&1
+echo "DEPOSITION_RUN_DONE" >> gpumd_run.log
