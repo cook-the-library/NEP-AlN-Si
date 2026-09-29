@@ -1,0 +1,22 @@
+# --- round 1wL: round-1.7 cumulative data + legacy class B+C, with        ---
+# --- abnormal energies rejected by round1wL_5_build_dataset.py.            ---
+# --- Architecture and hyperparameters identical to round1.7_nep-1.in.      ---
+# --- Trained from SCRATCH: round 1.7's nep.restart is not used.            ---
+# --- Order N Al Si Ar; LAMMPS pair_coeff must use: N Al Si Ar.             ---
+type          4 N Al Si Ar
+version       4
+cutoff        6 4     # still capped by the 16 A gas-phase boxes (>= 2 x rc)
+zbl           2       # ZBL blends in below 2 A
+n_max         12 8
+basis_size    12 12
+l_max         4 2 0
+neuron        60
+
+lambda_e      0.1
+lambda_f      50
+lambda_v      0.1
+batch         1000
+population    50
+
+# --- from-scratch budget, as in rounds 0 and 1.7 ---
+generation    200000
