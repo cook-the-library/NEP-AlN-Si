@@ -33,13 +33,23 @@ submits the VASP array, then the audit/build, then NEP training, with SLURM depe
     atoms;
   - every `*_5_build_dataset.py` rejects frames with 150 or more atoms
     (`too_many_atoms` in round 1wL).
-- The structure generator covers 9 buckets: bulk substrate and film, dimers and
-  trimers, slabs, adsorption, interface, isolated clusters and disordered.
-- Each round generates 1,000 structures, split across the buckets in the same
-  proportions (96 per bulk/slab/dimer/disordered bucket, 192 adsorption,
-  192 interface, 40 isolated). Round 1 defaults to `--seed 1` so it doesn't
-  regenerate round 0. The folders already run on Anvil came from the older
-  counts: 520 in round 0 and 1,560 in round 1.
+- The structure generator covers 10 buckets. Each round generates 1,000
+  structures, weighted toward what deposition MD visits most:
+
+  | Bucket | Count |
+  | --- | --- |
+  | `adsorption` (Al/N on Si(111)) | 150 |
+  | `adsorption_AlN` (Al/N on Al-polar AlN(0001), the growth front) | 150 |
+  | `disordered` | 150 |
+  | `dimer_trimer` | 100 |
+  | `slab_Si`, `slab_AlN` | 75 each |
+  | `interface` | 120 |
+  | `bulk_Si`, `bulk_AlN` | 70 each |
+  | `isolated_cluster` | 40 |
+
+  Round 1 defaults to `--seed 1` so it doesn't regenerate round 0. The folders
+  already run on Anvil came from the older counts (520 in round 0 and 1,560 in
+  round 1) and have no `adsorption_AlN` bucket.
 - One ENCUT is used for the whole campaign: 1.3 × the largest ENMAX. The k-point
   density is fixed.
 - The dipole correction is applied to every cell with vacuum.

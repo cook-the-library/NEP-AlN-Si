@@ -9,7 +9,10 @@ Generates the full seed set described in the active-learning workflow:
     dimer_trimer        pair and triple scans, weighted to short separations
     slab_substrate      multiple terminations, thicknesses, rattle, defects
     slab_film           same
-    adsorption          single adatoms, clusters, coverages, diffusion paths
+    adsorption          film adatoms on the substrate surface: single
+                        adatoms, clusters, coverages, diffusion paths
+    adsorption_<film>   the same on the film's own surface (Al-polar
+                        AlN(0001) by default), i.e. the growth front
     interface           lattice-matched, registry scan, separation scan,
                         intermixed and amorphous interlayers
     isolated_cluster    single atoms and small gas-phase clusters
@@ -62,15 +65,16 @@ from ase.io import write
 # --------------------------------------------------------------------------
 
 DEFAULT_COUNTS = {                 # 1000 structures per round
-    "bulk_substrate": 96,
-    "bulk_film": 96,
-    "dimer_trimer": 96,
-    "slab_substrate": 96,
-    "slab_film": 96,
-    "adsorption": 192,
-    "interface": 192,
+    "bulk_substrate": 70,
+    "bulk_film": 70,
+    "dimer_trimer": 100,
+    "slab_substrate": 75,
+    "slab_film": 75,
+    "adsorption_substrate": 150,       # Al/N adatoms on Si(111)
+    "adsorption_film": 150,            # Al/N adatoms on Al-polar AlN(0001)
+    "interface": 120,
     "isolated_cluster": 40,
-    "disordered": 96,
+    "disordered": 150,
 }
 
 # Hard ceiling for the whole campaign: every structure has strictly fewer
@@ -685,16 +689,26 @@ def gen_slabs(spec: MaterialSpec, n: int, cap: int, rng,
 # --------------------------------------------------------------------------
 
 
-def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
-                   rng, vacuum=12.0) -> list:
+def gen_adsorption(surf: MaterialSpec, adsorbates, n: int, cap: int,
+                   rng, vacuum=12.0, bucket="adsorption",
+                   flip=False) -> list:
+    """
+    Adatoms of `adsorbates` on a `surf` slab. The in-plane supercell is at
+    least 9 A wide so an adatom and its periodic image stay apart, and the
+    slab is at most 6 bulk repeats thick. flip=True turns the slab upside
+    down; for AlN(0001) that puts the Al-terminated +c face (Al-polar
+    growth front) on top instead of the N-terminated -c face.
+    """
     out = []
-    layers = layers_under_cap(sub, cap - 8, vacuum, nx=2, ny=2)
-    slab_small = sub.build_slab(layers, vacuum=vacuum)
-    slab_big = slab_small.repeat((2, 2, 1))
-    if len(slab_big) > cap - 8:
-        slab_big = slab_small
+    width = np.linalg.norm(surf.build_slab(1, vacuum=vacuum).get_cell()[0])
+    rep = max(2, int(math.ceil(9.0 / width)))
+    layers = min(6, layers_under_cap(surf, cap - 8, vacuum, nx=rep, ny=rep))
+    slab_big = surf.build_slab(layers, vacuum=vacuum).repeat((rep, rep, 1))
+    if flip:
+        slab_big.positions[:, 2] *= -1.0
+        slab_big.center(vacuum=vacuum, axis=2)
     sites = surface_sites(slab_big)
-    film_elems = film.elements
+    film_elems = list(adsorbates)
 
     heights = [1.0, 1.5, 2.0, 2.6, 3.4, 4.5]
 
@@ -711,11 +725,11 @@ def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
                         break
                     a = place_adatom(slab_big, sym, xy, h)
                     if len(a) <= cap:
-                        out.append(tag(a, "adsorption", "single_adatom",
+                        out.append(tag(a, bucket, "single_adatom",
                                        species=sym, site=kind, height=float(h)))
 
     # small clusters on the surface
-    mind = covalent_min_dist(list(film_elems) + sub.elements)
+    mind = covalent_min_dist(list(film_elems) + surf.elements)
     n_cluster = int(0.25 * n)
     for _ in range(n_cluster):
         k = int(rng.integers(2, 6))
@@ -736,7 +750,7 @@ def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
                 a = trial
                 placed += 1
         if placed >= 2:
-            out.append(tag(a, "adsorption", "cluster", n_adatoms=placed))
+            out.append(tag(a, bucket, "cluster", n_adatoms=placed))
 
     # sub-monolayer coverages
     n_cov = int(0.18 * n)
@@ -755,7 +769,7 @@ def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
             xy = hollow[int(i)]
             h = rng.uniform(1.4, 2.2) if ordered else rng.uniform(1.2, 2.8)
             a += Atoms(sym, positions=[[xy[0], xy[1], z0 + h]])
-        out.append(tag(a, "adsorption", "coverage",
+        out.append(tag(a, bucket, "coverage",
                        coverage=cov, ordered=ordered))
 
     # diffusion path saddles: midpoints between adjacent sites
@@ -772,7 +786,7 @@ def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
         xy = p + frac * (q - p)
         a = place_adatom(slab_big, sym, xy, float(rng.uniform(1.3, 2.3)))
         if len(a) <= cap:
-            out.append(tag(a, "adsorption", "diffusion_path",
+            out.append(tag(a, bucket, "diffusion_path",
                            species=sym, path_fraction=frac))
 
     return out[:n]
@@ -1557,9 +1571,13 @@ def main(argv=None):
     print(f"  slab_substrate      {args.n_slab_substrate}")
     frames += gen_slabs(film, args.n_slab_film, cap, rng, args.vacuum)
     print(f"  slab_film           {args.n_slab_film}")
-    frames += gen_adsorption(sub, film, args.n_adsorption, cap, rng,
-                             args.vacuum)
-    print(f"  adsorption          {args.n_adsorption}")
+    frames += gen_adsorption(sub, film.elements, args.n_adsorption_substrate,
+                             cap, rng, args.vacuum, bucket="adsorption")
+    print(f"  adsorption          {args.n_adsorption_substrate}")
+    frames += gen_adsorption(film, film.elements, args.n_adsorption_film,
+                             cap, rng, args.vacuum,
+                             bucket=f"adsorption_{film.name}", flip=True)
+    print(f"  adsorption_{film.name:<8s} {args.n_adsorption_film}")
     icap = min(args.max_atoms_interface or cap, ATOM_LIMIT - 1)
     frames += gen_interface(sub, film, args.n_interface, icap, rng,
                             args.vacuum, args.max_strain,
