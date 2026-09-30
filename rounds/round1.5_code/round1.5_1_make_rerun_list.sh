@@ -11,8 +11,10 @@
 #         round1_out/round1_3_resubmit.txt
 # Output: round1.5_out/round1.5_1_rerun_paths.txt
 #
-# Folders that have since converged, and paths that no longer exist, are
-# dropped here rather than wasting an array task each.
+# Folders that have since converged, paths that no longer exist, and
+# structures with ATOM_LIMIT (150) or more atoms are dropped here rather than
+# wasting an array task each. The dataset builder rejects >= 150-atom frames
+# anyway, so every round keeps structures strictly below 150 atoms.
 #
 # Run from anywhere; it moves to the project root itself:
 #     bash round1.5_code/round1.5_1_make_rerun_list.sh
@@ -25,6 +27,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 OUT="round1.5_out"
 LIST="$OUT/round1.5_1_rerun_paths.txt"
 CAND="$OUT/.rerun_candidates"
+ATOM_LIMIT=150
 
 mkdir -p "$OUT/logs"
 
@@ -48,6 +51,12 @@ fi
 # order-preserving dedupe
 cat "${SRC[@]}" | grep -v '^[[:space:]]*$' | awk '!seen[$0]++' > "$CAND"
 
+natoms() {                    # natoms DIR -- atom count from a VASP5 POSCAR
+    awk 'NR == 6 && $1 !~ /^[0-9]+$/ { next }       # species line
+         NR >= 6 { n = 0; for (i = 1; i <= NF; i++) n += $i; print n; exit }' \
+        "$1/POSCAR" 2>/dev/null
+}
+
 converged() {                 # converged DIR -- cheap test, footer first
     local o="$1/OUTCAR"
     [ -f "$o" ] || return 1
@@ -56,11 +65,17 @@ converged() {                 # converged DIR -- cheap test, footer first
 }
 
 : > "$LIST"
-n_todo=0; n_done=0; n_missing=0
+n_todo=0; n_done=0; n_missing=0; n_big=0
 while IFS= read -r DIR; do
     if [ ! -d "$DIR" ]; then
         n_missing=$((n_missing + 1))
         echo "  missing directory, dropped: $DIR"
+        continue
+    fi
+    n=$(natoms "$DIR")
+    if [ -n "$n" ] && [ "$n" -ge "$ATOM_LIMIT" ]; then
+        n_big=$((n_big + 1))
+        echo "  $n atoms (limit: fewer than $ATOM_LIMIT), dropped: $DIR"
         continue
     fi
     if converged "$DIR"; then
@@ -75,6 +90,7 @@ rm -f "$CAND"
 echo "--------------------------------------------------"
 echo "already converged since the audit : $n_done (dropped)"
 echo "paths that no longer exist        : $n_missing (dropped)"
+echo "structures with >= $ATOM_LIMIT atoms      : $n_big (dropped)"
 echo "to re-run                         : $n_todo -> $LIST"
 echo "--------------------------------------------------"
 

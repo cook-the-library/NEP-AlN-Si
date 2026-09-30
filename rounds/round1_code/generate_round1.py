@@ -17,13 +17,16 @@ Generates the full seed set described in the active-learning workflow:
 
 Defaults are diamond Si(111) substrate and wurtzite AlN(0001) film.
 
+Every structure has strictly fewer than ATOM_LIMIT (150) atoms. --max-atoms
+and --max-atoms-interface can lower the cap but never raise it past 149.
+
 Requires only numpy and ase.
 
 Usage
 -----
     Run from the project root (aaa-potential/ is looked up from there):
     python round1_code/generate_round1.py
-    python round1_code/generate_round1.py --max-atoms 300 --outdir round1_out/vasp
+    python round1_code/generate_round1.py --max-atoms 120 --outdir round1_out/vasp
     python round1_code/generate_round1.py --substrate Si --substrate-miller 111 \
         --film AlN --film-structure wurtzite --film-a 3.111 --film-c 4.981 \
         --film-miller 001
@@ -69,6 +72,10 @@ DEFAULT_COUNTS = {
     "isolated_cluster": 60,
     "disordered": 150,
 }
+
+# Hard ceiling for the whole campaign: every structure has strictly fewer
+# atoms than this. Caps from the command line are clamped to ATOM_LIMIT - 1.
+ATOM_LIMIT = 150
 
 
 @dataclass
@@ -742,8 +749,8 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
 
     chosen = choose_interface_geometry(sub, film, matches, cap, vacuum)
     if chosen is None:
-        print(f"  ! no interface fits under {cap} atoms; "
-              f"raise --max-atoms (see lattice_match.txt)", file=sys.stderr)
+        print(f"  ! no interface fits in {cap} atoms (hard limit: fewer "
+              f"than {ATOM_LIMIT}); see lattice_match.txt", file=sys.stderr)
         return []
 
     _, match, sl, fl, natoms = chosen
@@ -768,8 +775,8 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
               f"only fit is {sl}+{fl} layers.\n"
               f"    Each substrate layer costs ~{per_s:.0f} atoms and each "
               f"film layer ~{per_f:.0f}.\n"
-              f"    For 3 substrate + 2 film layers you need about {want} "
-              f"atoms: rerun with --max-atoms-interface {want}.",
+              f"    3 substrate + 2 film layers would need about {want} "
+              f"atoms, but structures are held below {ATOM_LIMIT} atoms.",
               file=sys.stderr)
 
     out = []
@@ -1024,7 +1031,7 @@ def validate(frames, cap, hard_min=0.5, interface_cap=None):
     kept, dropped = [], []
     for a in frames:
         limit = interface_cap if a.info.get("bucket") == "interface" else cap
-        if len(a) > limit:
+        if len(a) > limit or len(a) >= ATOM_LIMIT:
             dropped.append((a.info.get("kind", "?"), "over atom cap", len(a)))
             continue
         d = min_pair_distance(a)
@@ -1319,13 +1326,18 @@ def main(argv=None):
     p.add_argument("--film-a", type=float, default=3.111)
     p.add_argument("--film-c", type=float, default=4.981)
     p.add_argument("--film-miller", default="001")
-    p.add_argument("--max-atoms", type=int, default=200)
+    p.add_argument("--max-atoms", type=int, default=ATOM_LIMIT - 1,
+                   help=f"largest structure allowed, in atoms; clamped to "
+                        f"{ATOM_LIMIT - 1} (structures are always < {ATOM_LIMIT})")
     p.add_argument("--max-atoms-interface", type=int, default=None,
-                   help="separate cap for the interface bucket; interface "
-                        "supercells are much larger than the other buckets "
-                        "(defaults to --max-atoms)")
-    p.add_argument("--max-strain", type=float, default=0.06,
-                   help="maximum interface lattice mismatch to accept")
+                   help="separate cap for the interface bucket "
+                        "(defaults to --max-atoms); also clamped to "
+                        f"{ATOM_LIMIT - 1}")
+    p.add_argument("--max-strain", type=float, default=0.09,
+                   help="maximum interface lattice mismatch to accept. The "
+                        "1.3%% 16:25 Si(111)/AlN(0001) match needs >= 164 "
+                        "atoms, so under the 150-atom limit the default "
+                        "0.09 lets the 6:9 match (8.1%%, 144 atoms) in")
     p.add_argument("--vacuum", type=float, default=12.0)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--outdir", default="round1_out/vasp")
@@ -1361,7 +1373,11 @@ def main(argv=None):
 
     rng = np.random.default_rng(args.seed)
     os.makedirs(args.outdir, exist_ok=True)
-    cap = args.max_atoms
+    cap = min(args.max_atoms, ATOM_LIMIT - 1)
+    if args.max_atoms > cap:
+        print(f"! --max-atoms {args.max_atoms} clamped to {cap}: every "
+              f"structure must have fewer than {ATOM_LIMIT} atoms",
+              file=sys.stderr)
 
     sub = MaterialSpec(args.substrate, args.substrate_structure,
                        args.substrate_a, args.substrate_c,
@@ -1393,7 +1409,7 @@ def main(argv=None):
     frames += gen_adsorption(sub, film, args.n_adsorption, cap, rng,
                              args.vacuum)
     print(f"  adsorption          {args.n_adsorption}")
-    icap = args.max_atoms_interface or cap
+    icap = min(args.max_atoms_interface or cap, ATOM_LIMIT - 1)
     frames += gen_interface(sub, film, args.n_interface, icap, rng,
                             args.vacuum, args.max_strain,
                             os.path.join(args.outdir, "lattice_match.txt"))
@@ -1470,6 +1486,7 @@ def main(argv=None):
         print(f"  index: {root}/species_order.csv")
 
     sizes = [len(a) for a in kept]
+    assert max(sizes) < ATOM_LIMIT, max(sizes)
     print(f"\nwrote {len(kept)} structures to {args.outdir}/")
     print(f"atoms per structure: min {min(sizes)}, "
           f"mean {np.mean(sizes):.1f}, max {max(sizes)}")

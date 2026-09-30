@@ -24,6 +24,14 @@ Run each chain script with `bash` from a login node, after step 1 has finished. 
 submits the VASP array, then the audit/build, then NEP training, with SLURM dependencies.
 
 **What stays the same across rounds**
+- Every structure has fewer than 150 atoms (`ATOM_LIMIT = 150`). The rules are
+  applied at every stage, in every round:
+  - the generators clamp `--max-atoms` and `--max-atoms-interface` to 149 and
+    drop anything larger;
+  - `round1.5_1_make_rerun_list.sh` skips folders whose POSCAR has 150 or more
+    atoms;
+  - every `*_5_build_dataset.py` rejects frames with 150 or more atoms
+    (`too_many_atoms` in round 1wL).
 - The structure generator covers 9 buckets: bulk substrate and film, dimers and
   trimers, slabs, adsorption, interface, isolated clusters and disordered.
 - Round 0 generates 520 structures. Round 1 uses the same generator with 3× the counts.
@@ -55,12 +63,12 @@ with no virials, and a check script that assumed a flat directory layout.
 - **Round 1 is still random sampling.** Nothing selects structures where the
   round-0 NEP is uncertain. For round 2, use a new `--seed` and pick new
   structures by NEP error or uncertainty.
-- **The interface is one AlN layer thick.** Under the default `--max-atoms 200`, the
-  lattice match is 16 Si(111) cells to 25 AlN cells (1.26% strain). Only 3 Si
-  layers and 1 AlN layer (about 3 Å) fit, so every interface structure is
-  196 atoms. The generator itself warns about this, but `sbatch_round*.sbatch`
-  doesn't pass `--max-atoms-interface`. The 3 Si + 2 AlN layers it recommends
-  would need about 296 atoms per cell.
+- **Interface strain under the atom limit.** The 1.26% Si(111)/AlN(0001) match
+  (16 Si cells to 25 AlN cells) needs at least 164 atoms, even at 2 Si + 1 AlN
+  layers, so it can't be used below 150 atoms. With the default `--max-strain 0.09`,
+  the generator uses the 6:9 match instead: 8.1% mismatch, 3 Si + 3 AlN layers,
+  144 atoms. The round 0 and round 1 interface folders that already ran on Anvil
+  are 196 atoms, so the atom limit now keeps them out of every dataset.
 - **Loss weights.** `lambda_e 0.1` against `lambda_f 50` weights forces about
   500× more than energies. The round 1.5 notes say round 0's energy RMSE never
   came down. `round0_nep-2.in` (`lambda_e 10`, `lambda_f 3`) is the alternative

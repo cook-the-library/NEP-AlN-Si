@@ -14,6 +14,8 @@ Rejection rules, applied to every frame of every source, first match wins
 (so each rejected frame has exactly one reason):
 
   malformed      energy, Lattice, Properties, species or force column missing
+  too_many_atoms frame has ATOM_LIMIT (150) or more atoms; every round keeps
+                 structures strictly below 150 atoms
   nonfinite      energy or a force component is nan/inf
   species        an element that is not on the nep.in `type` line
   dropped        whole (source, bucket) named with --drop SOURCE:BUCKET[:REASON];
@@ -66,7 +68,8 @@ BUCKET_KEYS = ("bucket", "config_type")
 FOLDER_KEYS = ("folder", "directory", "path", "dir", "source_dir", "outcar",
                "structure", "name")
 SOURCE_TAG = "data_source"
-REASONS = ("malformed", "nonfinite", "species", "dropped",
+ATOM_LIMIT = 150                       # frames must have fewer atoms than this
+REASONS = ("malformed", "too_many_atoms", "nonfinite", "species", "dropped",
            "e_below_floor", "e_above_ceil", "f_above_cap")
 
 
@@ -282,6 +285,9 @@ def main():
                 reason, detail = None, ""
                 if info["bad"]:
                     reason, detail = "malformed", info["bad"]
+                elif info["n"] >= ATOM_LIMIT:
+                    reason = "too_many_atoms"
+                    detail = "%d atoms" % info["n"]
                 elif not info["finite"]:
                     reason = "nonfinite"
                 elif not info["species"] <= allowed:

@@ -328,6 +328,11 @@ def carry_and_split(records, test_fraction, rng, carry_map):
     return split
 
 
+# Hard ceiling for every round: frames with ATOM_LIMIT or more atoms are
+# rejected, so the dataset only holds structures of fewer than 150 atoms.
+ATOM_LIMIT = 150
+
+
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
@@ -401,6 +406,10 @@ def main(argv=None):
 
         info = load_provenance(folder)
         for atoms in frames:
+            if len(atoms) >= ATOM_LIMIT:
+                rejected.append((folder, f"{len(atoms)} atoms (limit: "
+                                         f"fewer than {ATOM_LIMIT})"))
+                continue
             try:
                 new, energy, forces, virial = attach_nep_fields(
                     atoms, info, folder, args.write_stress)
