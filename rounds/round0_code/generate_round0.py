@@ -103,12 +103,48 @@ class MaterialSpec:
 
     def build_slab(self, layers: int, vacuum: float | None = 8.0,
                    periodic_z: bool = False) -> Atoms:
+        """
+        `layers` bulk repeats along the surface normal. With vacuum, atomic
+        planes whose atoms keep only one bond are trimmed off both faces:
+        ase's diamond(111) cut runs through the long vertical bond, leaving
+        Si with three dangling bonds, so one extra repeat is built and the
+        lone planes removed, giving `layers` intact bilayers with the usual
+        one dangling bond per surface atom.
+        """
         slab = surface(self.build_bulk(), self.miller, layers, vacuum=vacuum)
+        if vacuum is not None:
+            trimmed = trim_dangling_planes(slab)
+            if len(trimmed) < len(slab):
+                slab = trim_dangling_planes(
+                    surface(self.build_bulk(), self.miller, layers + 1,
+                            vacuum=vacuum))
+            slab.center(vacuum=vacuum, axis=2)
         slab.pbc = (True, True, True)
         if periodic_z:
             slab.center(axis=2)
         slab.info["material"] = self.name
         slab.info["miller"] = "".join(str(i) for i in self.miller)
+        return slab
+
+    def build_slab_planes(self, n_planes: int,
+                          vacuum: float = 8.0) -> Atoms | None:
+        """
+        Slab of exactly n_planes atomic planes, bottom planes kept, or None
+        if cutting there leaves a dangling top plane (e.g. an odd number of
+        Si(111) planes). Lets the interface use half a wurtzite cell (one
+        Al-N bilayer) where a whole c repeat would not fit the atom cap.
+        """
+        per_layer = len(atomic_planes(self.build_slab(1, vacuum=vacuum)))
+        slab = self.build_slab(n_planes // max(1, per_layer) + 2,
+                               vacuum=vacuum)
+        planes = atomic_planes(slab)
+        if len(planes) < n_planes:
+            return None
+        drop = [i for p in planes[n_planes:] for i in p]
+        del slab[sorted(drop)]
+        if len(trim_dangling_planes(slab)) != len(slab):
+            return None
+        slab.center(vacuum=vacuum, axis=2)
         return slab
 
 
@@ -141,6 +177,43 @@ def min_pair_distance(atoms: Atoms) -> float:
     d = atoms.get_all_distances(mic=any(atoms.pbc))
     np.fill_diagonal(d, np.inf)
     return float(d.min())
+
+
+def atomic_planes(atoms: Atoms, tol=0.3) -> list:
+    """Atom indices grouped into planes along z, bottom first."""
+    order = np.argsort(atoms.positions[:, 2])
+    planes, z0 = [], None
+    for i in order:
+        z = atoms.positions[i, 2]
+        if z0 is None or z - z0 > tol:
+            planes.append([])
+            z0 = z
+        planes[-1].append(int(i))
+    return planes
+
+
+def coordination(atoms: Atoms, mult=1.2) -> np.ndarray:
+    """Neighbour counts with in-plane periodicity only (no bonds across vacuum)."""
+    from ase.neighborlist import natural_cutoffs, neighbor_list
+    a = atoms.copy()
+    a.pbc = (True, True, False)
+    i = neighbor_list("i", a, natural_cutoffs(a, mult=mult))
+    return np.bincount(i, minlength=len(a))
+
+
+def trim_dangling_planes(slab: Atoms) -> Atoms:
+    """Remove surface planes in which every atom has at most one neighbour."""
+    slab = slab.copy()
+    while len(slab) > 2:
+        planes = atomic_planes(slab)
+        if len(planes) < 3:
+            break
+        cn = coordination(slab)
+        drop = [p for p in (planes[0], planes[-1]) if cn[p].max() <= 1]
+        if not drop:
+            break
+        del slab[sorted(i for p in drop for i in p)]
+    return slab
 
 
 def covalent_min_dist(symbols, scale=0.75):
@@ -325,6 +398,7 @@ class LatticeMatch:
     strain_u: float
     strain_v: float
     strain_angle: float
+    real_strain: float = 0.0
 
     @property
     def max_strain(self):
@@ -336,9 +410,27 @@ def match_lattices(sub_2d, film_2d, max_cells=30, max_strain=0.06,
     """
     Find integer supercells of two 2D lattices that coincide within max_strain.
     sub_2d, film_2d are 2x3 arrays of in-plane cell vectors.
+
+    Each match carries integer matrices whose supercells have exactly the
+    vector pairs that were compared (reduced, same order, same handedness),
+    so build_interface can map film onto substrate by fractional coordinates
+    without adding shear. real_strain is the largest principal stretch of
+    that map.
     """
+    sub_2d = np.asarray(sub_2d, float)
+    film_2d = np.asarray(film_2d, float)
     area_s = np.linalg.norm(np.cross(sub_2d[0], sub_2d[1]))
     area_f = np.linalg.norm(np.cross(film_2d[0], film_2d[1]))
+    inv_s = np.linalg.inv(sub_2d[:, :2])
+    inv_f = np.linalg.inv(film_2d[:, :2])
+
+    def as_int(vecs, inv):
+        m = vecs[:, :2] @ inv
+        mi = np.rint(m).astype(int)
+        return mi if np.allclose(m, mi, atol=1e-6) else None
+
+    def cross_z(v):
+        return v[0][0] * v[1][1] - v[0][1] * v[1][0]
 
     results = []
     for i in range(1, max_cells + 1):
@@ -347,21 +439,31 @@ def match_lattices(sub_2d, film_2d, max_cells=30, max_strain=0.06,
                 continue
             for ms in hnf_matrices(i):
                 sv = reduce_2d(ms @ sub_2d)
+                if cross_z(sv) < 0:
+                    sv = np.array([sv[0], -sv[1]])
                 ls_u, ls_v, ls_a = cell_invariants(sv)
                 for mf in hnf_matrices(j):
                     fv = reduce_2d(mf @ film_2d)
-                    lf_u, lf_v, lf_a = cell_invariants(fv)
                     for swap in (False, True):
-                        au, av = (lf_v, lf_u) if swap else (lf_u, lf_v)
-                        aa = lf_a
+                        u, v = (fv[1], fv[0]) if swap else (fv[0], fv[1])
                         for flip in (1.0, -1.0):
-                            ang = aa if flip > 0 else math.pi - aa
-                            eu = (au - ls_u) / ls_u
-                            ev = (av - ls_v) / ls_v
-                            ea = (ang - ls_a) / ls_a
-                            if max(abs(eu), abs(ev), abs(ea)) <= max_strain:
-                                results.append(LatticeMatch(
-                                    ms, mf, i, j, eu, ev, ea))
+                            cand = np.array([u, flip * v])
+                            if cross_z(cand) <= 0:
+                                continue      # mirrored film: skip
+                            lf_u, lf_v, lf_a = cell_invariants(cand)
+                            eu = (lf_u - ls_u) / ls_u
+                            ev = (lf_v - ls_v) / ls_v
+                            ea = (lf_a - ls_a) / ls_a
+                            if max(abs(eu), abs(ev), abs(ea)) > max_strain:
+                                continue
+                            m_sub, m_film = as_int(sv, inv_s), as_int(cand, inv_f)
+                            if m_sub is None or m_film is None:
+                                continue
+                            A = np.linalg.solve(cand[:, :2], sv[:, :2])
+                            real = float(np.abs(
+                                np.linalg.svd(A, compute_uv=False) - 1).max())
+                            results.append(LatticeMatch(
+                                m_sub, m_film, i, j, eu, ev, ea, real))
     results.sort(key=lambda r: (r.n_sub_cells + r.n_film_cells, r.max_strain))
     # drop duplicates with identical cell counts and near-identical strain
     unique, seen = [], set()
@@ -664,17 +766,39 @@ def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
 # --------------------------------------------------------------------------
 
 
+_PLANE_SLABS = {}
+
+
+def slab_planes(spec: MaterialSpec, n_planes: int) -> Atoms | None:
+    """Cached spec.build_slab_planes(n_planes) with 6 A of vacuum."""
+    key = (spec.name, spec.structure, spec.a, spec.c, tuple(spec.miller),
+           n_planes)
+    if key not in _PLANE_SLABS:
+        _PLANE_SLABS[key] = spec.build_slab_planes(n_planes, vacuum=6.0)
+    slab = _PLANE_SLABS[key]
+    return None if slab is None else slab.copy()
+
+
 def build_interface(sub: MaterialSpec, film: MaterialSpec,
-                    match: LatticeMatch, sub_layers: int, film_layers: int,
+                    match: LatticeMatch, sub_planes: int, film_planes: int,
                     gap: float, shift=(0.0, 0.0), vacuum=12.0) -> Atoms | None:
-    """Stack a strained film supercell on a substrate supercell."""
-    s_slab = supercell_2d(sub.build_slab(sub_layers, vacuum=6.0), match.m_sub)
-    f_slab = supercell_2d(film.build_slab(film_layers, vacuum=6.0), match.m_film)
+    """
+    Stack a strained film supercell on a substrate supercell. Thicknesses
+    are in atomic planes (2 planes = one Si(111) or Al-N bilayer). The film
+    supercell's in-plane vectors are the ones match_lattices compared, so
+    scaling them onto the substrate's applies only match.real_strain.
+    """
+    s0 = slab_planes(sub, sub_planes)
+    f0 = slab_planes(film, film_planes)
+    if s0 is None or f0 is None:
+        return None
+    s_slab = supercell_2d(s0, match.m_sub)
+    f_slab = supercell_2d(f0, match.m_film)
 
     s_cell = s_slab.get_cell()
     f_cell = f_slab.get_cell()
 
-    # map the film in-plane lattice onto the substrate's: rotation + strain
+    # map the film in-plane lattice onto the substrate's: strain only
     new_f_cell = np.array([s_cell[0], s_cell[1], f_cell[2]])
     if abs(np.linalg.det(new_f_cell)) < 1e-6:
         return None
@@ -693,30 +817,39 @@ def build_interface(sub: MaterialSpec, film: MaterialSpec,
     total_z = combined.positions[:, 2].max() + vacuum
     cell = np.array([s_cell[0], s_cell[1], [0.0, 0.0, total_z]])
     combined.set_cell(cell, scale_atoms=False)
+    combined.wrap()
     combined.pbc = (True, True, True)
     combined.info["n_substrate"] = len(s_slab)
     combined.info["n_film"] = len(f_slab)
     return combined
 
 
-def choose_interface_geometry(sub, film, matches, cap, vacuum):
-    """Pick the match plus layer counts giving the thickest cell under cap."""
+def choose_interface_geometry(sub, film, matches, cap, max_strain,
+                              max_planes=24):
+    """Pick the match plus plane counts giving the thickest cell under cap."""
+    per_cell = {}
+    for spec in (sub, film):
+        for k in range(2, max_planes + 1):
+            slab = slab_planes(spec, k)
+            if slab is not None:
+                per_cell[(spec.name, k)] = len(slab)
     best = None
     for m in matches[:12]:
-        for sl in range(6, 1, -1):
-            for fl in range(6, 0, -1):
-                try:
-                    trial = build_interface(sub, film, m, sl, fl,
-                                            gap=2.2, vacuum=vacuum)
-                except Exception:
+        if m.real_strain > max_strain + 1e-9:
+            continue
+        for sp in range(2, max_planes + 1):
+            for fp in range(2, max_planes + 1):
+                ns = per_cell.get((sub.name, sp))
+                nf = per_cell.get((film.name, fp))
+                if ns is None or nf is None:
                     continue
-                if trial is None or len(trial) > cap:
+                natoms = ns * m.n_sub_cells + nf * m.n_film_cells
+                if natoms > cap:
                     continue
-                score = (min(sl, fl),
-                         -(m.n_sub_cells + m.n_film_cells),
-                         -m.max_strain)
+                score = (min(sp, fp), sp + fp,
+                         -(m.n_sub_cells + m.n_film_cells), -m.real_strain)
                 if best is None or score > best[0]:
-                    best = (score, m, sl, fl, len(trial))
+                    best = (score, m, sp, fp, natoms)
     return best
 
 
@@ -736,18 +869,20 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
                      f"in-plane a={np.linalg.norm(f_slab.get_cell()[0]):.4f} "
                      f"b={np.linalg.norm(f_slab.get_cell()[1]):.4f}\n\n")
             fh.write(f"{'n_sub':>6} {'n_film':>7} {'strain_u':>10} "
-                     f"{'strain_v':>10} {'strain_ang':>11} {'max':>8}\n")
+                     f"{'strain_v':>10} {'strain_ang':>11} {'max':>8} "
+                     f"{'real':>8}\n")
             for m in matches[:40]:
                 fh.write(f"{m.n_sub_cells:6d} {m.n_film_cells:7d} "
                          f"{m.strain_u:10.4f} {m.strain_v:10.4f} "
-                         f"{m.strain_angle:11.4f} {m.max_strain:8.4f}\n")
+                         f"{m.strain_angle:11.4f} {m.max_strain:8.4f} "
+                         f"{m.real_strain:8.4f}\n")
 
     if not matches:
         print(f"  ! no lattice match within {max_strain:.1%}; "
               f"interface bucket skipped", file=sys.stderr)
         return []
 
-    chosen = choose_interface_geometry(sub, film, matches, cap, vacuum)
+    chosen = choose_interface_geometry(sub, film, matches, cap, max_strain)
     if chosen is None:
         print(f"  ! no interface fits in {cap} atoms (hard limit: fewer "
               f"than {ATOM_LIMIT}); see lattice_match.txt", file=sys.stderr)
@@ -755,33 +890,33 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
 
     _, match, sl, fl, natoms = chosen
 
-    def _slab_stats(spec, layers, m2):
-        sl_ = supercell_2d(spec.build_slab(layers, vacuum=6.0), m2)
+    def _slab_stats(spec, planes, m2):
+        sl_ = supercell_2d(slab_planes(spec, planes), m2)
         z = sl_.positions[:, 2]
         return len(sl_), float(z.max() - z.min())
 
     n_s, t_s = _slab_stats(sub, sl, match.m_sub)
     n_f, t_f = _slab_stats(film, fl, match.m_film)
-    per_s, per_f = n_s / max(1, sl), n_f / max(1, fl)
+    per_s, per_f = n_s / sl, n_f / fl
 
     print(f"  interface: {match.n_sub_cells} substrate cells / "
-          f"{match.n_film_cells} film cells, mismatch {match.max_strain:.2%}")
-    print(f"             {sl} substrate layers ({n_s} atoms, {t_s:.1f} A) + "
-          f"{fl} film layers ({n_f} atoms, {t_f:.1f} A) = {natoms} atoms")
+          f"{match.n_film_cells} film cells, film strain "
+          f"{match.real_strain:.2%}")
+    print(f"             {sl} substrate planes ({n_s} atoms, {t_s:.1f} A) + "
+          f"{fl} film planes ({n_f} atoms, {t_f:.1f} A) = {natoms} atoms")
 
     if t_s < 6.0 or t_f < 6.0:
-        want = int(math.ceil(3 * per_s + 2 * per_f))
+        want = int(math.ceil(6 * per_s + 4 * per_f))
         print(f"  ! this interface is very thin. Under a {cap}-atom cap the "
-              f"only fit is {sl}+{fl} layers.\n"
-              f"    Each substrate layer costs ~{per_s:.0f} atoms and each "
-              f"film layer ~{per_f:.0f}.\n"
-              f"    3 substrate + 2 film layers would need about {want} "
+              f"thickest fit is {sl}+{fl} planes.\n"
+              f"    Each substrate plane costs ~{per_s:.0f} atoms and each "
+              f"film plane ~{per_f:.0f}.\n"
+              f"    3 substrate + 2 film bilayers would need about {want} "
               f"atoms, but structures are held below {ATOM_LIMIT} atoms.",
               file=sys.stderr)
 
     out = []
-    s_cell = supercell_2d(sub.build_slab(sl, vacuum=6.0),
-                          match.m_sub).get_cell()
+    s_cell = supercell_2d(slab_planes(sub, sl), match.m_sub).get_cell()
 
     # registry scan on a 3x3 in-plane grid
     n_reg = int(0.34 * n)
@@ -795,7 +930,7 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
         a = build_interface(sub, film, match, sl, fl, gap, tuple(shift), vacuum)
         if a is not None and len(a) <= cap:
             out.append(tag(a, "interface", "registry",
-                           strain=float(match.max_strain), gap=gap))
+                           strain=float(match.real_strain), gap=gap))
 
     # separation scan at fixed registry
     n_sep = int(0.30 * n)
@@ -804,7 +939,7 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
                             (0.0, 0.0), vacuum)
         if a is not None and len(a) <= cap:
             out.append(tag(a, "interface", "separation",
-                           strain=float(match.max_strain), gap=float(gap)))
+                           strain=float(match.real_strain), gap=float(gap)))
 
     # rattled at the nominal geometry
     n_rat = int(0.12 * n)
@@ -1333,11 +1468,8 @@ def main(argv=None):
                    help="separate cap for the interface bucket "
                         "(defaults to --max-atoms); also clamped to "
                         f"{ATOM_LIMIT - 1}")
-    p.add_argument("--max-strain", type=float, default=0.09,
-                   help="maximum interface lattice mismatch to accept. The "
-                        "1.3%% 16:25 Si(111)/AlN(0001) match needs >= 164 "
-                        "atoms, so under the 150-atom limit the default "
-                        "0.09 lets the 6:9 match (8.1%%, 144 atoms) in")
+    p.add_argument("--max-strain", type=float, default=0.06,
+                   help="maximum interface film strain to accept")
     p.add_argument("--vacuum", type=float, default=12.0)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--outdir", default="round0_out/vasp")

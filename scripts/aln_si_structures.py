@@ -115,8 +115,16 @@ def aln_slab(repeat, n_cells, polarity="Al", bottom="Al"):
 def si111_slab(repeat, n_bilayers, vacuum=0.0):
     from ase.build import diamond111
 
-    # diamond111 layers = atomic layers; 2 per bilayer
-    slab = diamond111("Si", (repeat, repeat, 2 * n_bilayers), a=A_SI, vacuum=vacuum)
+    # diamond111 layers = atomic layers, but its cut runs through the long
+    # vertical bond: the bottom and top planes are single atoms with three
+    # dangling bonds. Build one extra bilayer and drop those two planes so
+    # every surface Si keeps three bonds (one dangling bond, bulk-terminated).
+    slab = diamond111("Si", (repeat, repeat, 2 * n_bilayers + 2), a=A_SI)
+    z = slab.positions[:, 2]
+    del slab[[i for i in range(len(slab))
+              if z[i] < z.min() + 0.1 or z[i] > z.max() - 0.1]]
+    if vacuum:
+        slab.center(vacuum=vacuum, axis=2)
     slab.positions[:, 2] -= slab.positions[:, 2].min()
     return slab
 

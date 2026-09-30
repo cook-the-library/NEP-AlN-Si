@@ -1,7 +1,8 @@
 # Production rounds on Anvil (round 0, 1, 1.5)
 
 The scripts that were actually run on Purdue Anvil to build the Al–N–Si training
-set and train the NEP. They are kept as they were run. `../scripts/` is the
+set and train the NEP. They are kept as they were run, except for the
+150-atom limit and the geometry fixes described below. `../scripts/` is the
 general agentic workflow; this folder is the hand-driven campaign it grew out of.
 
 **`rounds/` is the project root.** Every script finds its files relative to the
@@ -48,7 +49,7 @@ submits the VASP array, then the audit/build, then NEP training, with SLURM depe
 **`legacy/`** holds the earlier versions these replaced: a frame-level random split
 with no virials, and a check script that assumed a flat directory layout.
 
-## Known issues (not fixed; the code is kept as it ran)
+## Known issues (only the geometry bugs are fixed in the code)
 
 - **Every dataset is tagged round 0.** `attach_nep_fields()` in all three
   `*_5_build_dataset.py` sets `info["round"] = 0`. The round 1 and 1.5 datasets
@@ -63,12 +64,28 @@ with no virials, and a check script that assumed a flat directory layout.
 - **Round 1 is still random sampling.** Nothing selects structures where the
   round-0 NEP is uncertain. For round 2, use a new `--seed` and pick new
   structures by NEP error or uncertainty.
-- **Interface strain under the atom limit.** The 1.26% Si(111)/AlN(0001) match
-  (16 Si cells to 25 AlN cells) needs at least 164 atoms, even at 2 Si + 1 AlN
-  layers, so it can't be used below 150 atoms. With the default `--max-strain 0.09`,
-  the generator uses the 6:9 match instead: 8.1% mismatch, 3 Si + 3 AlN layers,
-  144 atoms. The round 0 and round 1 interface folders that already ran on Anvil
-  are 196 atoms, so the atom limit now keeps them out of every dataset.
+- **Round 0 and 1 data were built with two geometry bugs, since fixed in the
+  generators.** The VASP folders that already ran on Anvil still carry them:
+  - *Broken interface films.* The matcher compared reduced 2D cells, allowing
+    a 60°/120° flip, but `build_interface` mapped the unreduced film supercell
+    onto the substrate's. The Si(111) cell has a 60° angle and the AlN cell a
+    120° one, so the "1.26% strain" film was really stretched about +71% / −43%.
+    Al–N contacts went down to 1.19 Å and coordination to 2–3. This affects all
+    400 interface folders (196 atoms each). The 150-atom limit already keeps
+    them out of every dataset.
+  - *Shuffle-cut Si(111).* ase's diamond(111) cut runs through the long vertical
+    bond, so every Si slab, adsorption substrate and interface substrate had
+    surface atoms with one bond and three dangling bonds. That affects all
+    `slab_Si`, `adsorption` and `interface` folders. The slab and adsorption
+    folders are still in the datasets; drop or recompute them.
+
+  The generators now trim singly-bonded planes, so Si(111) surfaces keep three
+  bonds per atom. The matcher returns the exact vector pairs it compared,
+  `build_interface` counts thickness in atomic planes, and `lattice_match.txt`
+  reports the real film strain. Under 150 atoms the Si(111)/AlN(0001)
+  interface is the 5:4 coincidence cell (16 Si : 25 AlN cells, 1.25% strain)
+  with 3 Si bilayers and 1 Al–N bilayer, 146 atoms. The same Si fix is in
+  `scripts/aln_si_structures.py`, which builds the deposition substrate.
 - **Loss weights.** `lambda_e 0.1` against `lambda_f 50` weights forces about
   500× more than energies. The round 1.5 notes say round 0's energy RMSE never
   came down. `round0_nep-2.in` (`lambda_e 10`, `lambda_f 3`) is the alternative
