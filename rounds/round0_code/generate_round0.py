@@ -61,16 +61,16 @@ from ase.io import write
 # configuration
 # --------------------------------------------------------------------------
 
-DEFAULT_COUNTS = {
-    "bulk_substrate": 50,
-    "bulk_film": 50,
-    "dimer_trimer": 50,
-    "slab_substrate": 50,
-    "slab_film": 50,
-    "adsorption": 100,
-    "interface": 100,
-    "isolated_cluster": 20,
-    "disordered": 50,
+DEFAULT_COUNTS = {                 # 1000 structures per round
+    "bulk_substrate": 96,
+    "bulk_film": 96,
+    "dimer_trimer": 96,
+    "slab_substrate": 96,
+    "slab_film": 96,
+    "adsorption": 192,
+    "interface": 192,
+    "isolated_cluster": 40,
+    "disordered": 96,
 }
 
 # Hard ceiling for the whole campaign: every structure has strictly fewer
@@ -249,6 +249,21 @@ def apply_strain(atoms: Atoms, F) -> Atoms:
     out = atoms.copy()
     out.set_cell(out.get_cell() @ F.T, scale_atoms=True)
     return out
+
+
+def jittered_grid(lo, hi, n, rng, log=False) -> np.ndarray:
+    """
+    n evenly spaced points on [lo, hi] (geometric if log), each moved by a
+    random fraction of up to half a step. Scans still cover the range, but a
+    different --seed gives new points, so rounds don't repeat each other.
+    """
+    if n < 2:
+        return np.array([0.5 * (lo + hi)] * n)
+    if log:
+        return np.exp(jittered_grid(math.log(lo), math.log(hi), n, rng))
+    step = (hi - lo) / (n - 1)
+    pts = np.linspace(lo, hi, n) + rng.uniform(-0.5, 0.5, n) * step
+    return np.clip(pts, lo, hi)
 
 
 def rattle(atoms: Atoms, amplitude, rng) -> Atoms:
@@ -495,7 +510,7 @@ def gen_bulk(spec: MaterialSpec, n: int, cap: int, rng) -> list:
     n_defect = max(2, int(0.18 * n))
     n_extreme = max(2, n - n_eos - n_strain - n_defect)
 
-    for s in np.linspace(-0.08, 0.08, n_eos):
+    for s in jittered_grid(-0.08, 0.08, n_eos, rng):
         a = base.copy()
         a.set_cell(a.get_cell() * (1 + s), scale_atoms=True)
         out.append(tag(a, "bulk_" + spec.name, "eos", volume_strain=float(s)))
@@ -570,7 +585,8 @@ def gen_dimer_trimer(elements, n: int, box=16.0, rng=None) -> list:
     for a, b in pairs:
         r0 = covalent_radii[atomic_numbers[a]] + covalent_radii[atomic_numbers[b]]
         # log spacing, weighted to short separations
-        seps = np.geomspace(0.55, max(6.0, 2.6 * r0), per_pair)
+        seps = jittered_grid(0.55, max(6.0, 2.6 * r0), per_pair, rng,
+                             log=True)
         for r in seps:
             at = Atoms([a, b], positions=[[0, 0, 0], [r, 0, 0]],
                        cell=[box, box, box], pbc=False)
@@ -689,7 +705,8 @@ def gen_adsorption(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
             if not pts:
                 continue
             for xy in pts[:2]:
-                for h in heights:
+                for h0 in heights:
+                    h = float(h0 + rng.uniform(-0.2, 0.2))
                     if len(out) >= int(0.48 * n):
                         break
                     a = place_adatom(slab_big, sym, xy, h)
@@ -934,7 +951,7 @@ def gen_interface(sub: MaterialSpec, film: MaterialSpec, n: int, cap: int,
 
     # separation scan at fixed registry
     n_sep = int(0.30 * n)
-    for gap in np.linspace(1.4, 5.5, max(2, n_sep)):
+    for gap in jittered_grid(1.4, 5.5, max(2, n_sep), rng):
         a = build_interface(sub, film, match, sl, fl, float(gap),
                             (0.0, 0.0), vacuum)
         if a is not None and len(a) <= cap:

@@ -25,7 +25,7 @@ evaluation:
   require_all_criteria: true
 
 active_learning:
-  structures_per_round: 60            # more than the default: bulk + surface + interface + adatoms
+  structures_per_round: 1000          # matches rounds/: 1000 structures (VASP single points) per loop
   bias_toward_high_error: true
   max_rounds: 6
 

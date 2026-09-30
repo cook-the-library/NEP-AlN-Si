@@ -35,7 +35,11 @@ submits the VASP array, then the audit/build, then NEP training, with SLURM depe
     (`too_many_atoms` in round 1wL).
 - The structure generator covers 9 buckets: bulk substrate and film, dimers and
   trimers, slabs, adsorption, interface, isolated clusters and disordered.
-- Round 0 generates 520 structures. Round 1 uses the same generator with 3× the counts.
+- Each round generates 1,000 structures, split across the buckets in the same
+  proportions (96 per bulk/slab/dimer/disordered bucket, 192 adsorption,
+  192 interface, 40 isolated). Round 1 defaults to `--seed 1` so it doesn't
+  regenerate round 0. The folders already run on Anvil came from the older
+  counts: 520 in round 0 and 1,560 in round 1.
 - One ENCUT is used for the whole campaign: 1.3 × the largest ENMAX. The k-point
   density is fixed.
 - The dipole correction is applied to every cell with vacuum.
@@ -55,8 +59,8 @@ with no virials, and a check script that assumed a flat directory layout.
   `*_5_build_dataset.py` sets `info["round"] = 0`. The round 1 and 1.5 datasets
   therefore label every frame as round 0, so any per-round statistics built on
   that field are wrong.
-- **Round 1 repeats part of round 0.** `generate_round1.py` uses the same default
-  `--seed 0` as round 0, and several scans are deterministic. Regenerating both
+- **Round 1 repeated part of round 0** (fixed: round 1 now defaults to `--seed 1`).
+  The round 1 that ran used the same `--seed 0` as round 0, and several scans are deterministic. Regenerating both
   rounds locally without POTCARs gave 100 of round 1's 1,560 structures that are
   exact copies of round-0 ones. By bucket: adsorption 48/300, bulk Si 25/150,
   dimers/trimers 12/150, and a few in each other bucket. These cost VASP time and

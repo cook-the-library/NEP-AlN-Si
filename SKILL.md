@@ -99,7 +99,7 @@ deposition/
 Run an individual stage, e.g.:
 
 ```bash
-python scripts/generate_structures.py --round 0 --n-structures 40
+python scripts/generate_structures.py --round 0   # 1000 structures, from criteria.yaml
 python scripts/submit_vasp.py --round 0 --cluster anvil
 python scripts/vasp_to_nep_dataset.py --round 0
 python scripts/submit_nep_training.py --round 0 --cluster anvil
