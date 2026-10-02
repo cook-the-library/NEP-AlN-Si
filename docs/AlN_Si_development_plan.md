@@ -31,7 +31,8 @@ growing on Si(111), and then uses it in the deposition-optimization stages
 | Surfaces | Si(111), AlN(0001), both polarities | the growth front | seeds; add 7×7-like / 2×2 reconstructions later |
 | Adatoms | Al and N on Si(111) and AlN(0001) | the individual deposition events | seeds; add NEB paths for diffusion barriers |
 | Interface | AlN(0001)/Si(111), 5:4 coincidence, Al–Si and N–Si terminated | TBC and interface stability | 228-atom seed; AIMD at 300 and ~1000 K |
-| Disorder | amorphous SiNₓ, Al–Si liquid, amorphous AlN | outcomes of bad growth conditions the MD will visit | AIMD melt-quench (not seeded yet) |
+| Disorder | amorphous SiNₓ, Al–Si liquid, amorphous AlN | outcomes of bad growth conditions the MD will visit | NEP melt-quench (bulk, then cleaved with vacuum) + DFT single points: `rounds/round1md_code/` |
+| Collisions | Al, N, N₂, Ar impacts at 1–100 eV on Si(111), AlN(0001)/(000-1), amorphous slabs | the deposition events themselves, with the substrate responding | NEP MD + DFT single points: `rounds/round1md_code/` |
 | Active learning | frames from NEP deposition MD with the highest uncertainty | cover what the MD actually visits | main loop, `bias_toward_high_error` |
 
 The interface cell is 228 atoms (4 Si bilayers + 2 AlN cells). That's expensive but
@@ -73,7 +74,10 @@ python scripts/aln_si_structures.py --termination N    # N-Si interface
 
 - [ ] Optional Al pre-deposition step in stage 7 (deposit an Al wetting layer before switching on N)
       to match `interface_termination: "Al"` growth.
-- [ ] Add amorphous SiNₓ / a-AlN melt-quench AIMD inputs.
+- [x] Add amorphous SiNₓ / a-AlN melt-quench inputs (round 1md runs them with the
+      NEP instead of AIMD, and labels selected frames with VASP).
+- [ ] Fix the Si(111) termination and the interface-film shear in the round
+      generators (see "Known issues" in `rounds/README.md`).
 - [ ] Decide on the deposition technique (sputtering vs MOCVD vs MBE). It sets the
       incident-energy range and whether NH₃/H needs to be a fourth element.
 - [ ] Fill in measured κ / TBC targets.

@@ -1,4 +1,4 @@
-# Production rounds on Anvil (round 0, 1, 1.5)
+# Production rounds on Anvil (round 0, 1, 1.5, and round 1md)
 
 The scripts that were actually run on Purdue Anvil to build the Al–N–Si training
 set and train the NEP. They are kept as they were run. `../scripts/` is the
@@ -22,6 +22,17 @@ folder that holds `round0_code/`, so submit from here. Put the POTCARs in
 
 Run each chain script with `bash` from a login node, after step 1 has finished. It
 submits the VASP array, then the audit/build, then NEP training, with SLURM dependencies.
+
+**Round 1md** (`round1md_code/`, see its README) is a different kind of round.
+It does not build structures by hand. LAMMPS MD with the round-1wL NEP does
+two things: it melt-quenches amorphous AlN, SiNₓ, Al–Si and AlSiN (bulk, then
+cleaved with vacuum), and it fires sequential Al/N/N₂/Ar impacts at Si(111),
+AlN(0001), AlN(000-1) and the amorphous slabs. Frames are screened for NEP
+failures, about 900 are selected by farthest-point sampling, and they are
+labelled with round 1's VASP settings. The new data is merged with the
+round-1wL dataset, and training continues round 1wL's `nep.restart`. Chains:
+`bash round1md_code/round1md_run_md.sh` (MD + harvest), then
+`bash round1md_code/round1md_generateVASP_trainNEP.sh`.
 
 **What stays the same across rounds**
 - The structure generator covers 9 buckets: bulk substrate and film, dimers and
@@ -69,6 +80,23 @@ with no virials, and a check script that assumed a flat directory layout.
   `fine_tune` line. `round1_nep.sbatch` comments it out before training, so it
   is harmless there, but running `nep` directly with that file would try to
   fine-tune.
+- **The interface film is sheared.** `build_interface` matches the 60° Si(111)
+  supercell with a 120° AlN supercell, then maps the film onto the substrate cell
+  with `set_cell(..., scale_atoms=True)`. The lattice points coincide, but the
+  atoms inside the cell are sheared. Every round 0/1 interface structure,
+  unrattled `registry` and `separation` scans included, has 50 Al–N pairs at
+  1.19 Å; the bulk bond is 1.89 Å. Fix: change the film basis to 60° (b → a + b)
+  before mapping. Until then, consider `--drop` for these interface frames.
+- **The Si(111) slabs cut through the bilayers.** `ase.build.surface` leaves
+  every top and bottom Si atom with coordination 1 (three dangling bonds), not
+  the bulk-terminated surface with one. This affects slab_Si, adsorption (all
+  on Si(111)) and interface. `scripts/aln_si_structures.py:si111_slab` does the
+  same, so the stage-7 deposition substrate has it too.
+- **One distance threshold for every pair.** Random placements check every pair
+  against the smallest pair threshold, which is N–N. Every
+  `disordered_film_on_slab` frame therefore has an Al–Al pair at about 0.90 Å
+  (the bond is 2.86 Å). Bulk `interstitial` and adsorption `cluster` frames
+  reach 0.35–0.47 of the covalent-radius sum.
 - **Hard-coded Anvil settings.** Allocation names (`mat260051`, `mat260051-gpu`),
   the mail address, the module versions and the `nep` binary path are fixed in
   the `.sbatch` headers. Edit them before running under another account or on ACES.

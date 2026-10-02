@@ -1,0 +1,123 @@
+# =============================================================================
+# Round 1md: melt-quench a BULK cell with the current NEP, then (if vacuum > 0)
+# cleave the quenched cell along z and anneal it as a slab with vacuum.
+#
+# round1md_1_build_md_inputs.py copies this file into each run folder as in.lmp
+# next to:
+#   params.lmp   every number used below (temperatures, step counts, dumps)
+#   start.data   random packing at the target density; types follow nep.txt
+#
+# Stages; each writes its own dump so the harvester knows where a frame is from
+#   0 relax    nve/limit + Langevin at T_relax: pushes apart the close contacts
+#              of the random packing (not dumped)
+#   1 melt     NVT at T_melt                       -> dump.melt.lammpstrj
+#   2 quench   NVT ramp T_melt -> T_final          -> dump.quench.lammpstrj
+#   3 anneal   NVT at T_final                      -> dump.anneal.lammpstrj
+#                                                     bulk_final.data
+#   4 slab     only if vacuum > 0: shift the atoms by zshift along z (picks the
+#              cleavage plane), open a vacuum gap above the cell, then NVT
+#              heat to T_slab, hold, cool to T_final -> dump.slab.lammpstrj
+#                                                     slab_final.data
+# The volume is fixed in stages 0-3 (NVT); the density scan over run folders
+# replaces NPT, which an incomplete potential can collapse or blow apart.
+#
+# The run stops with an error (fix halt) as soon as the NEP visibly fails:
+#   PE/atom below epa_floor, T above T_cap, or any pair closer than d_halt
+#   (checked every 50 steps from the melt stage on).
+# Frames dumped before that are still harvested; the last ones before the
+# failure are the most useful structures of the whole run.
+#
+# Run from the run folder:   lmp -in in.lmp -log log.lammps
+# =============================================================================
+
+units           metal
+atom_style      atomic
+boundary        p p p
+
+include         params.lmp
+read_data       ${data_file}
+
+pair_style      nep
+pair_coeff      * * ${nep_file} ${elements}
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        ${dt}
+
+thermo          500
+thermo_style    custom step time temp pe ke etotal press density
+thermo_modify   flush yes
+
+compute         pea all pe/atom
+variable        dumpcols string "id type x y z vx vy vz fx fy fz c_pea"
+
+print           "R1MD_STAGE relax step $(step)"
+# --- 0. relax the random packing ----------------------------------------------
+velocity        all create ${T_relax} ${seed} dist gaussian mom yes rot no
+fix             relax all nve/limit 0.02
+fix             lang all langevin ${T_relax} ${T_relax} $(100.0*dt) ${seed}
+run             ${n_relax}
+unfix           relax
+unfix           lang
+
+# --- failure detector, from the melt on ----------------------------------------
+# (not during the relax stage: removing the close contacts of the random
+# packing is what that stage is for)
+compute         pairs all pair/local dist
+compute         dmin all reduce min c_pairs inputs local
+variable        epa equal pe/atoms
+variable        bad equal "(v_epa < v_epa_floor) || (temp > v_T_cap) || (c_dmin < v_d_halt)"
+fix             halt all halt 50 v_bad > 0.5 error hard message yes
+
+# --- 1. melt ------------------------------------------------------------------
+print           "R1MD_STAGE melt step $(step)"
+velocity        all create ${T_melt} $(v_seed+1) dist gaussian mom yes rot no
+fix             md all nvt temp ${T_melt} ${T_melt} $(100.0*dt)
+dump            d all custom ${every_melt} dump.melt.lammpstrj ${dumpcols}
+dump_modify     d sort id
+run             ${n_melt}
+undump          d
+
+# --- 2. quench ----------------------------------------------------------------
+print           "R1MD_STAGE quench step $(step)"
+unfix           md
+fix             md all nvt temp ${T_melt} ${T_final} $(100.0*dt)
+dump            d all custom ${every_quench} dump.quench.lammpstrj ${dumpcols}
+dump_modify     d sort id
+run             ${n_quench}
+undump          d
+
+# --- 3. anneal at T_final -----------------------------------------------------
+print           "R1MD_STAGE anneal step $(step)"
+unfix           md
+fix             md all nvt temp ${T_final} ${T_final} $(100.0*dt)
+dump            d all custom ${every_anneal} dump.anneal.lammpstrj ${dumpcols}
+dump_modify     d sort id
+run             ${n_anneal}
+undump          d
+write_data      bulk_final.data
+
+if "${vacuum} <= 0.0" then "print 'R1MD_DONE bulk only (vacuum = 0)'" "quit 0"
+
+# --- 4. cleave, add vacuum, anneal the slab -----------------------------------
+# displace_atoms remaps atoms into the periodic box, so the cell boundary at
+# z = zlo becomes the cleavage plane; growing zhi then opens the vacuum gap.
+print           "R1MD_STAGE slab step $(step)"
+displace_atoms  all move 0.0 0.0 ${zshift} units box
+change_box      all z final $(zlo) $(zhi+v_vacuum) units box
+velocity        all zero linear
+unfix           md
+fix             md all nvt temp ${T_final} ${T_slab} $(100.0*dt)
+dump            d all custom ${every_slab} dump.slab.lammpstrj ${dumpcols}
+dump_modify     d sort id
+run             ${n_slab_heat}
+unfix           md
+fix             md all nvt temp ${T_slab} ${T_slab} $(100.0*dt)
+run             ${n_slab_hold}
+unfix           md
+fix             md all nvt temp ${T_slab} ${T_final} $(100.0*dt)
+run             ${n_slab_cool}
+undump          d
+write_data      slab_final.data
+
+print           "R1MD_DONE"
