@@ -321,9 +321,21 @@ for the round-1.7 committee. Neither real potential is in the repository.
   before each impact: 310–400 K in the Al run (T_sub 300 K), 790–980 K in the
   N run (T_sub 900 K). With 0.2 ps in a short test the slab overheated and
   lost its bilayer layering, so do not shorten `--t-slow` for real runs.
+  The full-length runs with NEP89 ended as follows:
+  - Al pre-deposition: the lower Si bilayers stay intact and the Al mixes
+    into the top bilayer.
+  - Nitridation: the Si above the fixed bilayer turns into amorphous SiNₓ.
+    20 of the 24 N are bonded to three Si (as in Si₃N₄), and one N₂ forms.
+  Your NEP will give its own surfaces; check them before pass 2.
 - **Harvest.** It wrote 900 folders with committee-first selection. The
   committee comparison uses the plain NEP forces (`fix store/force`); with the
-  same potential on both sides every atom agrees to 6 × 10⁻³ eV/Å.
+  same potential on both sides every atom agrees to 6 × 10⁻³ eV/Å. Against
+  the 2%-perturbed copy, the median disagreement is 0.2 eV/Å for collision
+  frames and 0.3–0.5 eV/Å for amorphous frames. 12% of collision frames and
+  50–64% of amorphous frames are above `--dev-lo` 0.3.
+- **Dataset steps.** On the harvested frames with synthetic labels (noise
+  15 meV/atom, 150 meV/Å), `round2_6_nep_vs_dft.py` reports those values
+  exactly. The contact filter and the merge ran on them.
 - **Thermal rattle.** 190 folders, contact ratio ≥ 0.72, NCORE 4 / KPAR 4.
 - **Contact filter.** Run on the regenerated round-1 structures (numbers
   above).
