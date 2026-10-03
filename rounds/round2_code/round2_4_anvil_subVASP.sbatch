@@ -1,37 +1,38 @@
 #!/bin/bash
-#SBATCH -J r1md_vasp
+#SBATCH -J r2_vasp
 #SBATCH -A mat260051
 #SBATCH -p shared
 #SBATCH --nodes=1
-#SBATCH --ntasks=32
-#SBATCH --time=24:00:00
+#SBATCH --ntasks=16
+#SBATCH --time=12:00:00
 #SBATCH --signal=B:USR1@1800
 #SBATCH --array=0-999%100
-#SBATCH -o round1md_out/logs/z-vasp-%A_%a.out
+#SBATCH -o round2_out/logs/z-vasp-%A_%a.out
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=dokwankook@gmail.com
 
 # ---------------------------------------------------------------------------
-# Round 1md, step 4: VASP single points on the frames round1md_3_harvest.py
-# selected, one array task per folder of round1md_out/round1md_3_vasp_job_paths.txt.
+# Round 2, step 4: VASP single points on every round-2 folder, one array
+# task per line of round2_out/round2_4_vasp_job_paths.txt (the thermal-rattle
+# folders followed by the MD-sampled ones; the chain script writes it).
+#
+# 16 cores, 12 h, as round 0. The INCARs were written for 16 ranks: NCORE 4
+# and KPAR up to 4, never more than the irreducible k-points
+# (round2_common.set_vasp_parallel); everything else is round 1's INCAR.
 #
 # The job logic is round1.5_2_anvil_rerun_vasp.sbatch unchanged (only the path
 # list differs): a STOPCAR is written 30 min before the walltime so VASP ends
 # cleanly and leaves WAVECAR/CHGCAR, and a resubmitted folder continues from
-# them instead of starting over. Rounds 0 and 1 lost whole 12 h jobs without
-# this. The cells here are 96-145 atoms with vacuum, like round 1's adsorption
-# and slab folders, so expect a similar share to need a second pass:
-#     bash round1md_code/round1md_generateVASP_trainNEP.sh   (skips converged)
+# them instead of starting over. With 12 h per job the 164-189-atom interface
+# folders may need more than one pass:
+#     bash round2_code/round2_generateVASP_trainNEP.sh   (skips converged)
 #
-# INCAR/KPOINTS/POTCAR were written by the harvest step with round 1's own
-# writer: same ENCUT, k-point density, dipole correction and ISPIN rules.
-#
-# Submit from the project root. round1md_out/logs must exist beforehand;
-# round1md_code/round1md_generateVASP_trainNEP.sh does the mkdir and the
+# Submit from the project root. round2_out/logs must exist beforehand;
+# round2_code/round2_generateVASP_trainNEP.sh does the mkdir and the
 # chunking, and passes CHUNK_OFFSET.
 # ---------------------------------------------------------------------------
 
-PATHFILE="round1md_out/round1md_3_vasp_job_paths.txt"
+PATHFILE="round2_out/round2_4_vasp_job_paths.txt"
 EARLY_FAIL_SEC=180
 
 module --force purge

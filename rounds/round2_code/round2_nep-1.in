@@ -1,0 +1,22 @@
+# --- round 2, stage 1 of 2: FORCES first. Continues round 1wL's nep.restart ---
+# --- (round2_nep.sbatch STAGE=1). Data: round-1wL (broken geometries      ---
+# --- removed) + round-2 MD-sampled and thermally rattled frames.          ---
+# --- Architecture identical to round1wL_nep-1.in; only the loss weights   ---
+# --- change between the two stages, so stage 2 can continue this run.     ---
+# --- Order N Al Si Ar; LAMMPS pair_coeff must use: N Al Si Ar.             ---
+type          4 N Al Si Ar
+version       4
+cutoff        6 4     # still capped by the 16 A gas-phase boxes (>= 2 x rc)
+zbl           2       # ZBL blends in below 2 A
+n_max         12 8
+basis_size    12 12
+l_max         4 2 0
+neuron        60
+
+lambda_e      0.1
+lambda_f      50
+lambda_v      0.1
+batch         1000
+population    50
+
+generation    200000

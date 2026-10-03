@@ -1,7 +1,7 @@
 # =============================================================================
-# Round 1md: sequential projectile impacts on a slab with the current NEP.
+# Round 2: sequential projectile impacts on a slab with the current NEP.
 #
-# round1md_1_build_md_inputs.py copies this file into each run folder as in.lmp
+# round2_1_build_md_inputs.py copies this file into each run folder as in.lmp
 # next to:
 #   params.lmp            every number used below
 #   start.data            the target slab, 1 A above z = 0, empty box above it
@@ -21,14 +21,14 @@
 #   - n_fast steps with a dump every every_fast steps: approach and impact
 #   - n_slow steps with a dump every every_slow steps: the surface relaxes and
 #     cools before the next projectile
-#   - fix dt/reset keeps every atom under xmax per step, so a 100 eV projectile
-#     runs at ~0.1 fs and the thermalised surface at dtmax
+#   - fix dt/reset keeps every atom under xmax per step, so a 50 eV N
+#     projectile runs at ~0.15 fs and the thermalised surface at dtmax
 # The surface keeps what earlier impacts did to it, so later impacts hit
 # adatoms, clusters, vacancies and implanted atoms -- not only the perfect slab.
 # z is non-periodic: atoms reflected or sputtered out of the top are deleted.
 #
 # The run stops with an error (fix halt) when PE/atom drops below epa_floor
-# or any pair gets closer than d_halt. No temperature check here: a 100 eV
+# or any pair gets closer than d_halt. No temperature check here: a 50 eV
 # projectile alone heats 130 atoms by thousands of kelvin for a moment.
 #
 # Run from the run folder:   lmp -in in.lmp -log log.lammps
@@ -55,6 +55,10 @@ group           mobile subtract all fixed
 
 velocity        mobile create ${T_sub} ${seed} dist gaussian mom yes rot no
 velocity        fixed set 0.0 0.0 0.0
+# the plain NEP forces, stored BEFORE setforce and langevin below change them:
+# the dump writes these, so the harvester, the committee comparison and the
+# NEP-vs-DFT check all see what the potential predicts, not the thermostat
+fix             fstore all store/force
 fix             freeze fixed setforce 0.0 0.0 0.0
 # integrates everything, including atoms created later; the fixed atoms have
 # zero force and zero velocity, so they stay where they are
@@ -76,21 +80,21 @@ thermo_style    custom step time dt temp c_tmob pe ke atoms
 thermo_modify   flush yes lost ignore norm no
 
 # --- equilibrate the substrate at T_sub ---------------------------------------
-print           "R1MD_STAGE equil step $(step)"
+print           "MD_STAGE equil step $(step)"
 run             ${n_equil}
 
 dump            d all custom ${every_slow} dump.collision.lammpstrj &
-                id type x y z vx vy vz fx fy fz c_pea
+                id type x y z vx vy vz f_fstore[1] f_fstore[2] f_fstore[3] c_pea
 dump_modify     d sort id
 
 # --- impacts ------------------------------------------------------------------
 variable        k loop ${n_impacts}
 label           impact_loop
-  print         "R1MD_IMPACT ${k} step $(step) time $(time:%.5f)"
+  print         "MD_IMPACT ${k} step $(step) time $(time:%.5f)"
   include       impacts/impact_${k}.lmp
   dump_modify   d every ${every_fast}
   run           ${n_fast}
-  print         "R1MD_RELAX ${k} step $(step) time $(time:%.5f)"
+  print         "MD_RELAX ${k} step $(step) time $(time:%.5f)"
   dump_modify   d every ${every_slow}
   run           ${n_slow}
   next          k
@@ -98,4 +102,4 @@ label           impact_loop
 
 undump          d
 write_data      final.data
-print           "R1MD_DONE"
+print           "MD_DONE"

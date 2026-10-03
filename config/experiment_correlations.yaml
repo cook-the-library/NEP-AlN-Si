@@ -3,7 +3,7 @@
 
 experiment:
   name: "AlN-on-Si111"
-  deposition_technique: "FILL_ME_IN"  # e.g. "reactive sputtering", "MOCVD", "PA-MBE"
+  deposition_technique: "PVD"        # physical vapour deposition; Ar is the sputter gas (in the NEP)
   substrate_material: "Si"
   deposit_material: "AlN"
   substrate_orientation: "(111)"      # (111) gives the hexagonal template for c-plane AlN

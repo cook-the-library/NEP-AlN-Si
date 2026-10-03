@@ -1,0 +1,44 @@
+# =============================================================================
+# Round 2: committee rerun. A second NEP (params: committee_file, by default
+# the round-1.7 potential) re-evaluates every frame the MD dumped, and writes
+# its forces and per-atom energies next to each dump:
+#     dump.<stage>.lammpstrj  ->  dump.<stage>.committee.lammpstrj
+# round2_3_harvest.py compares the two: where the potentials disagree, the
+# training data does not pin the answer down, and those frames are labelled
+# first.
+#
+# Every snapshot is read whole (purge yes + add keep): collision frames gain
+# projectiles and lose sputtered atoms, so the atom set changes between them.
+#
+# Run from the run folder after in.lmp:   lmp -in in.rerun.lmp -log log.rerun
+# =============================================================================
+
+units           metal
+atom_style      atomic
+atom_modify     map yes
+include         params.lmp
+boundary        ${bnd}
+read_data       ${data_file}
+
+pair_style      nep
+pair_coeff      * * ${committee_file} ${elements}
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+compute         pea all pe/atom
+thermo_modify   lost ignore norm no
+
+variable        s index ${rerun_stages}
+label           stage_loop
+variable        have equal is_file(dump.${s}.lammpstrj)
+if              "${have} == 0" then "jump SELF next_stage"
+print           "MD_RERUN ${s}"
+dump            c all custom 1 dump.${s}.committee.lammpstrj id type fx fy fz c_pea
+dump_modify     c sort id
+rerun           dump.${s}.lammpstrj dump x y z box yes purge yes replace no add keep
+undump          c
+label           next_stage
+next            s
+jump            SELF stage_loop
+
+print           "MD_RERUN_DONE"

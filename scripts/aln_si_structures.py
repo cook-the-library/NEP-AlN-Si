@@ -113,11 +113,22 @@ def aln_slab(repeat, n_cells, polarity="Al", bottom="Al"):
 
 
 def si111_slab(repeat, n_bilayers, vacuum=0.0):
+    """Bulk-terminated Si(111) with n complete bilayers, so every top and
+    bottom atom has ONE dangling bond. diamond111 cuts through the bilayers
+    and leaves the outermost atoms held by a single bond (three dangling
+    bonds each), so two extra atomic layers are built and trimmed off."""
     from ase.build import diamond111
 
     # diamond111 layers = atomic layers; 2 per bilayer
-    slab = diamond111("Si", (repeat, repeat, 2 * n_bilayers), a=A_SI, vacuum=vacuum)
+    slab = diamond111("Si", (repeat, repeat, 2 * n_bilayers + 2), a=A_SI, vacuum=0.0)
+    layers = _layers(slab)
+    z = [slab.positions[layer[0], 2] for layer in layers]
+    # the first layer that is the lower half of a closely spaced pair (bilayer)
+    start = next(i for i in range(len(layers) - 1) if z[i + 1] - z[i] < 1.0)
+    slab = slab[sorted(i for layer in layers[start:start + 2 * n_bilayers] for i in layer)]
     slab.positions[:, 2] -= slab.positions[:, 2].min()
+    if vacuum:
+        slab.center(vacuum=vacuum, axis=2)
     return slab
 
 

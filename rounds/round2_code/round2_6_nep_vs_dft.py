@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Round 1md, step 6: how wrong was the NEP on the structures its own MD made?
+Round 2, step 6: how wrong was the NEP on the structures its own MD made?
 
-round1md_3_harvest.py saved the NEP energy and forces of every selected frame
+round2_3_harvest.py saved the NEP energy and forces of every selected frame
 (selected_nep.extxyz). Once VASP has labelled those frames and the dataset
 builder has turned them into train/test xyz, this script pairs the two by
 folder and reports the NEP error per bucket and stage.
@@ -16,10 +16,10 @@ Frames the harvester modified (atoms far from the slab removed) have no NEP
 energy for the cell that went to VASP and are skipped.
 
 Usage (from the project root):
-    python round1md_code/round1md_6_nep_vs_dft.py \\
-        --nep-xyz round1md_out/vasp/selected_nep.extxyz \\
-        --dft round1md_out/dataset_new/train.xyz round1md_out/dataset_new/test.xyz \\
-        --out round1md_out/dataset_new/nep_vs_dft.txt
+    python round2_code/round2_6_nep_vs_dft.py \\
+        --nep-xyz round2_out/vasp_md/selected_nep.extxyz \\
+        --dft round2_out/dataset_new/train.xyz round2_out/dataset_new/test.xyz \\
+        --out round2_out/dataset_new/nep_vs_dft.txt
 """
 
 from __future__ import annotations
@@ -35,10 +35,10 @@ from ase.io import read
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--nep-xyz", default="round1md_out/vasp/selected_nep.extxyz")
-    p.add_argument("--dft", nargs="+", default=["round1md_out/dataset_new/train.xyz",
-                                                "round1md_out/dataset_new/test.xyz"])
-    p.add_argument("--out", default="round1md_out/dataset_new/nep_vs_dft.txt")
+    p.add_argument("--nep-xyz", default="round2_out/vasp_md/selected_nep.extxyz")
+    p.add_argument("--dft", nargs="+", default=["round2_out/dataset_new/train.xyz",
+                                                "round2_out/dataset_new/test.xyz"])
+    p.add_argument("--out", default="round2_out/dataset_new/nep_vs_dft.txt")
     a = p.parse_args(argv)
 
     nep = {}
